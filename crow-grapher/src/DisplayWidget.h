@@ -28,8 +28,8 @@ public:
 	{
 		setMinimumSize(string_size, 200);
 		//pixmap.fill(Qt::black);
-    	//setScaledContents(true);
-    	//setFixedSize(0,0);
+		//setScaledContents(true);
+		//setFixedSize(0,0);
 
 		for (auto& f : imgbuf) f = 0x88888888;
 	}
@@ -55,6 +55,7 @@ public:
 			qmut.unlock();
 
 			ralgo::inplace::normalize(v);
+
 			for (int x = 0; x < v.size(); ++x)
 			{
 				double val = v[x];
@@ -207,7 +208,7 @@ public:
 		axisY->setRange(-yscale, yscale);
 		axisX_fft->setRange(0, fftresult.size());
 		axisY_fft->setRange(0.01, 1500);
-		axisX_mel->setRange(0, 16-2-1);
+		axisX_mel->setRange(0, 16 - 2 - 1);
 		axisY_mel->setRange(0, 1);
 
 		m_series->replace(buffer);
@@ -285,21 +286,25 @@ public:
 					ralgo::vecops::inplace::div(fftresult, freqlist.size());
 
 					QVector<double> mels(windows_keys.size());
-					for (int i = 0; i < windows_keys.size(); ++i) 
+
+					for (int i = 0; i < windows_keys.size(); ++i)
 					{
 						auto values = ralgo::signal::lerp_values<std::vector<double>>(fftresult, freqlist, windows_keys[i]);
 						auto muls = ralgo::vecops::mul_vv(values, windows_values[i]);
+						//ralgo::inplace::elementwise(muls, [](auto & x) { return x * x; });
 						mels[i] = ralgo::trapz(windows_keys[i], muls);
 					}
 
+					//ralgo::inplace::elementwise(mels, [](auto & x) { return log(x); });
 					ralgo::inplace::normalize(mels);
+
 					for (unsigned int i = 0; i < fftresult_vis.size(); ++i)
 					{
 						QVector<QPointF> mels_viz = ralgo::elementwise2<QVector<QPointF>>(
-							[](double y, int x){return QPointF(x, y); },
-							mels, 
-							ralgo::arange<std::vector<int>>(mels.size())
-						);
+						[](double y, int x) {return QPointF(x, y); },
+						mels,
+						ralgo::arange<std::vector<int>>(mels.size())
+						                            );
 						double r = fftresult[i];
 						fftresult_vis[i] = QPointF(i, r);
 						m_series_fft->replace(fftresult_vis);
