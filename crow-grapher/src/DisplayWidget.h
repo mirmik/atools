@@ -14,7 +14,9 @@
 #include <ralgo/signal/convolution.h>
 #include <nos/print.h>
 
-#define FFTBUF_OFFSET 9
+#include <ralgo/util/math.h>
+
+#define FFTBUF_OFFSET 8
 
 class TrackWidget : public QWidget
 {
@@ -22,7 +24,7 @@ public:
 
 	static int const wider = 4;
 	static int const string_size = ((1 << FFTBUF_OFFSET) / 2 + 1) * wider;
-	static int const ywider = 2;
+	static int const ywider = 4;
 
 	TrackWidget() : QWidget(nullptr)
 	{
@@ -60,11 +62,13 @@ public:
 			{
 				double val = v[x];
 				uint8_t a = 255;
-				uint8_t g = val * 255;
-				uint8_t r = val * 255;
-				uint8_t b = val * 255;
+				uint8_t g = 0;
+				//uint8_t r = val * 255;
+				//uint8_t b = val * 255;
 				//uint8_t r = val < 0.5 ? 0 : (val - 0.5) * 2 * 255;
 				//uint8_t b = val > 0.5 ? 255 : val * 2 * 255;
+				uint8_t r = val > 0 ? 0 : ralgo::clamp<double>(- val * 255 * 4, 0, 255);
+				uint8_t b = val < 0 ? 0 : ralgo::clamp<double>(val * 255 * 4, 0, 255);
 				uint32_t clr = (a << 24) | (r << 16) | (g << 8) | (b << 0);
 
 				for (int k = 0; k < wider; ++k)
@@ -185,6 +189,7 @@ public:
 		QValueAxis *axisX_fft = new QValueAxis;
 		axisX_fft->setTitleText("Samples");
 
+		//QLogValueAxis *axisY_fft = new QLogValueAxis;
 		QLogValueAxis *axisY_fft = new QLogValueAxis;
 		axisY_fft->setTitleText("Audio level");
 
@@ -208,7 +213,6 @@ public:
 		axisY->setRange(-yscale, yscale);
 		axisX_fft->setRange(0, fftresult.size());
 		axisY_fft->setRange(0.01, 1500);
-		axisX_mel->setRange(0, 16 - 2 - 1);
 		axisY_mel->setRange(0, 1);
 
 		m_series->replace(buffer);
@@ -231,8 +235,9 @@ public:
 
 		setLayout(mainLayout);
 
-		melfreqs = ralgo::linspace<std::vector<double>>(0, ralgo::hz2mel(4000), 16);
+		melfreqs = ralgo::linspace<std::vector<double>>(0, ralgo::hz2mel(4000), 64);
 		ralgo::mel2hz_vi(melfreqs);
+		axisX_mel->setRange(0, melfreqs.size() - 2 - 1);
 
 		//nos::println("melfreqs:", melfreqs);
 		//nos::println("freqlist:", freqlist);
@@ -272,7 +277,7 @@ public:
 				if (fftbuf_cursor == fftbuf_size)
 				{
 					fftbuf_cursor = 0;
-					ralgo::signal::spectre(fftbuf.data(), fftresult.data(), fftbuf_size, fftresult.size());
+					//ralgo::signal::spectre(fftbuf.data(), fftresult.data(), fftbuf_size, fftresult.size());
 
 //					std::vector<double> inverse_fft(fftresult.size());
 //					ralgo::signal::spectre(fftresult.data(), inverse_fft.data(), fftresult.size(), fftresult.size());
@@ -298,19 +303,43 @@ public:
 					//ralgo::inplace::elementwise(mels, [](auto & x) { return log(x); });
 					ralgo::inplace::normalize(mels);
 
+					QVector<QPointF> mels_viz = ralgo::elementwise2<QVector<QPointF>>(
+					[](double y, int x) {return QPointF(x, y); },
+					mels,
+					ralgo::arange<std::vector<int>>(mels.size()));
+
 					for (unsigned int i = 0; i < fftresult_vis.size(); ++i)
 					{
-						QVector<QPointF> mels_viz = ralgo::elementwise2<QVector<QPointF>>(
-						[](double y, int x) {return QPointF(x, y); },
-						mels,
-						ralgo::arange<std::vector<int>>(mels.size())
-						                            );
 						double r = fftresult[i];
 						fftresult_vis[i] = QPointF(i, r);
-						m_series_fft->replace(fftresult_vis);
-						m_series_mel->replace(mels_viz);
-						timetrack->add_vector(fftresult);
 					}
+
+					ralgo::inplace::log(fftresult);
+					
+					std::vector<std::complex<double>> tmp = 
+						ralgo::elementwise<std::vector<std::complex<double>>>(
+					[](double x) {return std::complex<double>(x); },
+					fftresult);
+
+					tmp.resize(128);
+
+					ralgo::signal::ifft(tmp);					
+					fftresult = ralgo::vecops::abs<QVector<double>>(tmp);
+
+					ralgo::inplace::normalize(fftresult);
+					for (int i = 0; i < 10; ++i) 
+					{
+						fftresult[i] = 0.01;
+						fftresult[fftresult.size()-i-1] = 0.01;
+					}
+					ralgo::inplace::normalize(fftresult);
+
+
+					//dprln("here");*/
+					
+					m_series_fft->replace(fftresult_vis);
+					m_series_mel->replace(mels_viz);
+					timetrack->add_vector(fftresult);
 				}
 			}
 		}
